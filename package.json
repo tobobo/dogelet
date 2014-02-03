@@ -15,6 +15,7 @@
     "coffee-script": "~1.6.3",
     "implied-mail": "0.0.2",
     "simplesmtp": "0.3.20",
-    "nodemailer": "~0.6.0"
+    "nodemailer": "~0.6.0",
+    "rsvp": "~3.0.3"
   }
 }
