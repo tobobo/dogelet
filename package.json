@@ -13,6 +13,8 @@
     "connect": "~2.12.0",
     "connect-redis": "~1.4.6",
     "coffee-script": "~1.6.3",
-    "implied-mail": "0.0.2"
+    "implied-mail": "0.0.2",
+    "simplesmtp": "0.3.20",
+    "nodemailer": "~0.6.0"
   }
 }
