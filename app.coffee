@@ -13,7 +13,7 @@ RedisStore = require('connect-redis')(connect)
 app = express()
 
 # import configuration options
-require('config')(app)
+require('./config')(app)
 
 dogecoin = (require 'node-dogecoin')()
 dogecoin.auth(app.get('dogecoin_username'),app.get('dogecoin_password')).set('host', 'localhost').set({port:22555})
