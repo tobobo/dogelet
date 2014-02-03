@@ -9,20 +9,19 @@ path = require("path")
 crypto = require 'crypto'
 connect = require('connect')
 RedisStore = require('connect-redis')(connect)
+RSVP = require('rsvp')
 
 app = express()
 
 # import configuration options
 require('./config')(app)
 
-dogecoin = (require 'node-dogecoin')()
+dogecoin = require('./doge-promise')()
+
 dogecoin.auth(app.get('dogecoin_username'),app.get('dogecoin_password')).set('host', 'localhost').set({port:22555})
 
-app.set 'name', 'dogelet'
-app.set 'admin_email', "info@dogelet.com"
-app.set 'email_name', 'DogeLet'
-
-require('implied-mail').sendgrid(app)
+app.set 'name', 'Shibe Wallet'
+app.set 'admin_email', "info@shibe.io"
 
 mailer = app.get 'mailer'
 
@@ -95,10 +94,9 @@ app.get '/', (req, res)->
 
   if email and req.session.address # If we're logged in properly...
 
-    dogecoin.getBalance email, (err, result)->
+    dogecoin.getBalance email
 
-      if err
-        return security_error res, ''+err
+    .then (result) ->
 
       # For some reason empty accounts have a composite object as balance.
       unless typeof result is 'number'
@@ -108,6 +106,9 @@ app.get '/', (req, res)->
       res.render 'index',
         balance: result
         address: req.session.address
+
+    , (error, result) ->
+        security_error res, ''+err
 
 
   else
@@ -123,57 +124,51 @@ app.get '/signup', (req,res)->
 
   unless EMAIL_REGEX.test email
     return security_error res, 'Invalid email address.'
-   
-  dogecoin.getAddressesByAccount email, (err, result)->
-    
-    if err
-      return security_error res, ''+err
 
+  isNewAccount = false
+  
+  dogecoin.getAddressesByAccount email
 
+  .then (result) ->
     if result.length
-
-      mailer.send_mail
-          to: email
-          subject: "Your DogeLet (Dogecoin wallet)"
-          body:"""
-          Here's your secure DogeLet link:
-          
-          http://#{app.get('host')}/login?email=#{email}&hash=#{hash}
-
-          WARNING: Never share this with anyone, as they will be able to use your wallet!
-
-          """
-        , (success, message)->
-          
-          unless success
-            return security_error res, message
-
-          return security_error res, 'You already have a wallet. Check your email (search inbox for dogelet.com)'
-
+      new RSVP.Promise (resolve) -> resolve result
     else
-      dogecoin.getNewAddress email, (err, result)->
-        
-        if err
-          return security_error res, err
+      isNewAccount = true
+      dogecoin.getNewAddress email
 
-        mailer.send_mail
-            to: email
-            subject: "Your New DogeLet (Dogecoin wallet)"
-            body:"""
-            Here's your secure DogeLet link:
-            
-            http://#{app.get('host')}/login?email=#{email}&hash=#{hash}
+  .then ->
+    if isNewAccount
+      subject = "Welcome to Shibe!"
+      adjective = "brand new"
+    else
+      subject = "Thanks for using Shibe. Here's your wallet."
+      adjective = "existing"
 
-            WARNING: Never share this with anyone, as they will be able to use your wallet!
 
-            """
-          , (success, message)->
+    mailer.sendMail
+      from: app.get('from')
+      to: email
+      subject: subject
+      body: """
+      Here's the link to your #{adjective} Shibe wallet account:
+      
+      http://#{app.get('host')}/login?email=#{email}&hash=#{hash}
 
-            unless success
-              return security_error res, message
+      WARNING: Never share this with anyone, as they will be able to use your wallet!
 
-            return security_error res, 'Your new wallet has been created! Check your email (search inbox for dogelet.com)'
+      """
 
+  .then (result) ->
+    if isNewAccount
+      message = 'Welcome to Shibe. We just sent you a link to your wallet. Good Shibe.'
+    else
+      message = 'We just sent you another link to your Shibe wallet. Good Shibe.'
+    res.render 'message',
+      message: message
+
+  , (err, result) ->
+    console.log 'error'
+    security_error res, err
 
 
 app.get '/login', (req,res)->
@@ -183,7 +178,9 @@ app.get '/login', (req,res)->
 
   if get_email_hash(req.query.email) is req.query.hash # hash is good.
     req.session.email = req.query.email
-    dogecoin.getAddressesByAccount req.query.email, (err, result)->
+
+    dogecoin.getAddressesByAccount req.query.email
+    .then (result)->
       if result.length isnt 1
         return security_error res, "Duplicate address."
       req.session.address = result[0]
@@ -209,12 +206,13 @@ app.get '/send', login_required, (req,res)->
   unless /[a-zA-Z\d]+/.test req.query.send_to
     return security_error res, 'Badly formed recipient address'
 
-  dogecoin.validateAddress req.query.send_to, (err, result)->
-    if err
-      return security_error '' + err
+  dogecoin.validateAddress req.query.send_to
+  .then (result)->
     if result.isvalid
       dogecoin.sendFrom email, req.query.send_to, parseFloat(req.query.amount), 1, ->
         res.send arguments
+  , (err, result) ->
+    security_error '' + err
 
 
 
@@ -222,20 +220,23 @@ app.get '/history', login_required, (req,res)->
   
   page = parseInt(req.query.page or '0')
 
-  dogecoin.listTransactions req.session.email, 11, page * 0, (err, transactions)->
-    if err
-      return security_error '' + err
+  dogecoin.listTransactions req.session.email, 11, page * 0
+  .then (transactions) ->
+    console.log 'transactions', transactions
     res.render 'history',
       transactions: transactions
       page: page
+  , (err) ->
+    return security_error '' + err
 
 
 app.get '/history/:tid', login_required, (req,res)->
 
-  dogecoin.gettransaction req.params.tid, (err, transaction)->
-    if err
-      return security_error '' + err
+  dogecoin.getTransaction req.params.tid
+  .then (transaction)->
     res.send transaction
+  , (error) ->
+    security_error '' + err
 
 
 app.get '/logout', (req,res)->
