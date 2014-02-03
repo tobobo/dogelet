@@ -5,7 +5,7 @@ block content
     h1 History
     ul
       for transaction in transactions
-        if !(trnansaction = transactions[transactions.length] && transactions.length == 11)
+        if !(transaction = transactions[transactions.length] && transactions.length == 11)
           li
             a(href='/history/'+transaction.txid) #{transaction.category} #{Math.abs(transaction.amount)} #{transaction.address}
     
